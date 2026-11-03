@@ -1,0 +1,287 @@
+import tkinter as tk
+from tkinter import messagebox
+from functools import reduce
+
+BG = "#FFF8E7"
+PRIMARY = "#FF6F00"
+CARD = "#FFFFFF"
+DARK = "#222222"
+FREE_DELIVERY_ABOVE = 999
+STANDARD_DELIVERY = 49
+EXPRESS_EXTRA = 99
+GIFT_WRAP_PRICE = 25
+
+PRODUCTS = [
+    {"id": 1, "name": "Wireless Headphones", "category": "Electronics", "price": 1499},
+    {"id": 2, "name": "Smart Watch", "category": "Electronics", "price": 2999},
+    {"id": 3, "name": "Bluetooth Speaker", "category": "Electronics", "price": 1299},
+    {"id": 4, "name": "Cotton T-Shirt", "category": "Fashion", "price": 499},
+    {"id": 5, "name": "Denim Jacket", "category": "Fashion", "price": 1799},
+    {"id": 6, "name": "Running Shoes", "category": "Fashion", "price": 2199},
+    {"id": 7, "name": "Coffee Mug", "category": "Home", "price": 249},
+    {"id": 8, "name": "Desk Lamp", "category": "Home", "price": 899},
+    {"id": 9, "name": "Notebook Set", "category": "Home", "price": 349},
+]
+
+SORT_KEYS = {
+    "Name": lambda p: p["name"],
+    "Price: Low to High": lambda p: p["price"],
+    "Price: High to Low": lambda p: -p["price"],
+}
+
+
+class Shopsy:
+    def __init__(self, root):
+        self.root = root
+        self.cart = {}                      # product id -> quantity
+        self.cart_win = None
+        self.category = tk.StringVar(value="All")
+        self.search = tk.StringVar()
+        self.max_price = tk.IntVar(value=3000)
+        self.sort_by = tk.StringVar(value="Name")
+
+        root.title("shopsy.com")
+        root.geometry("920x620")
+        root.configure(bg=BG)
+
+        self.build_header()
+        self.status = tk.Label(root, text="", bg=DARK, fg="white", anchor="w", padx=10)
+        self.status.pack(fill="x", side="bottom")
+
+        body = tk.Frame(root, bg=BG)
+        body.pack(fill="both", expand=True)
+        self.build_sidebar(body)
+
+        self.grid_frame = tk.Frame(body, bg=BG)
+        self.grid_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
+
+        self.refresh_products()
+
+    # ---------- layout ----------
+    def build_header(self):
+        header = tk.Frame(self.root, bg=PRIMARY)
+        header.pack(fill="x")
+
+        tk.Label(header, text="shopsy.com", font=("Arial", 20, "bold"),
+                 bg=PRIMARY, fg="white").pack(side="left", padx=15, pady=10)
+
+        search = tk.Entry(header, textvariable=self.search, width=30)
+        search.pack(side="left", padx=10)
+        # Event binding: re-filter every time a key is released
+        search.bind("<KeyRelease>", lambda e: self.refresh_products())
+
+        self.cart_btn = tk.Button(header, text="Cart (0)", command=self.open_cart,
+                                  bg="white", fg=PRIMARY, font=("Arial", 11, "bold"))
+        self.cart_btn.pack(side="right", padx=15)
+
+    def build_sidebar(self, parent):
+        side = tk.Frame(parent, bg=CARD, bd=1, relief="ridge", width=200)
+        side.pack(side="left", fill="y", padx=10, pady=10)
+
+        # Canvas banner
+        banner = tk.Canvas(side, width=180, height=50, bg=PRIMARY, highlightthickness=0)
+        banner.pack(padx=10, pady=10)
+        banner.create_text(90, 25, text="Free delivery\nover Rs. 999",
+                           fill="white", font=("Arial", 10, "bold"), justify="center")
+
+        tk.Label(side, text="Category", font=("Arial", 11, "bold"), bg=CARD).pack(anchor="w", padx=10)
+        for name in ["All", "Electronics", "Fashion", "Home"]:
+            tk.Radiobutton(side, text=name, variable=self.category, value=name, bg=CARD,
+                           command=self.refresh_products).pack(anchor="w", padx=10)
+
+        tk.Label(side, text="Max price (Rs.)", font=("Arial", 11, "bold"), bg=CARD).pack(anchor="w", padx=10, pady=(12, 0))
+        tk.Scale(side, from_=0, to=3000, orient="horizontal", variable=self.max_price,
+                 command=lambda value: self.refresh_products(), bg=CARD, length=170,
+                 highlightthickness=0).pack(padx=10)
+
+        tk.Label(side, text="Sort by", font=("Arial", 11, "bold"), bg=CARD).pack(anchor="w", padx=10, pady=(12, 0))
+        menubutton = tk.Menubutton(side, text="Sort options", relief="raised")
+        menubutton.pack(anchor="w", padx=10, pady=5)
+        menu = tk.Menu(menubutton, tearoff=0)
+        for option in SORT_KEYS:
+            menu.add_radiobutton(label=option, variable=self.sort_by, value=option,
+                                 command=self.refresh_products)
+        menubutton["menu"] = menu
+
+    # ---------- pure helper functions (Unit 4 style) ----------
+    def visible_products(self):
+        query = self.search.get().strip().lower()
+        category = self.category.get()
+        limit = self.max_price.get()
+
+        # filter() with a lambda predicate
+        matches = lambda p: (query in p["name"].lower()
+                             and (category == "All" or p["category"] == category)
+                             and p["price"] <= limit)
+        items = list(filter(matches, PRODUCTS))
+        # sorted() with a key function chosen from a dict of lambdas
+        return sorted(items, key=SORT_KEYS[self.sort_by.get()])
+
+    def cart_lines(self):
+        # list comprehension: (product, quantity) pairs for items in the cart
+        return [(p, self.cart[p["id"]]) for p in PRODUCTS if p["id"] in self.cart]
+
+    def breakdown(self):
+        # reduce() folds the cart lines into a single subtotal
+        subtotal = reduce(lambda acc, line: acc + line[0]["price"] * line[1], self.cart_lines(), 0)
+        delivery = (0 if subtotal >= FREE_DELIVERY_ABOVE else STANDARD_DELIVERY)
+        if self.cart_win and self.delivery.get() == 1:
+            delivery += EXPRESS_EXTRA
+        wrap = GIFT_WRAP_PRICE if self.cart_win and self.gift_wrap.get() else 0
+        return subtotal, delivery, wrap, subtotal + delivery + wrap
+
+    def total_items(self):
+        return reduce(lambda acc, q: acc + q, self.cart.values(), 0)
+
+    # ---------- product grid ----------
+    def refresh_products(self):
+        for widget in self.grid_frame.winfo_children():
+            widget.destroy()
+
+        visible = self.visible_products()
+        for index, product in enumerate(visible):
+            self.make_card(product).grid(row=index // 3, column=index % 3, padx=8, pady=8, sticky="nsew")
+
+        if not visible:
+            tk.Label(self.grid_frame, text="No products match your filters.",
+                     bg=BG, font=("Arial", 12)).grid(row=0, column=0, pady=30)
+        names = ", ".join(map(lambda p: p["name"], visible))   # map()
+        self.status.config(text=f"{len(visible)} product(s) shown" + (f": {names}" if names else ""))
+
+    def make_card(self, product):
+        card = tk.Frame(self.grid_frame, bg=CARD, bd=1, relief="groove", padx=10, pady=10)
+        tk.Label(card, text=product["category"], bg=CARD, fg="gray").pack()
+        tk.Label(card, text=product["name"], font=("Arial", 12, "bold"),
+                 bg=CARD, wraplength=160).pack(pady=4)
+        tk.Label(card, text=f"Rs. {product['price']}", bg=CARD, fg=PRIMARY,
+                 font=("Arial", 11)).pack()
+        # lambda with default argument captures the current product (closure-safe)
+        tk.Button(card, text="Add to cart", bg=PRIMARY, fg="white",
+                  command=lambda p=product: self.add_to_cart(p)).pack(pady=8)
+        return card
+
+    # ---------- cart actions ----------
+    def add_to_cart(self, product):
+        self.cart[product["id"]] = self.cart.get(product["id"], 0) + 1
+        self.update_cart_count()
+        self.status.config(text=f"Added {product['name']} to cart")
+        if self.cart_win and self.cart_win.winfo_exists():
+            self.render_cart()
+
+    def update_cart_count(self):
+        self.cart_btn.config(text=f"Cart ({self.total_items()})")
+
+    def set_qty(self, pid, value):
+        try:
+            qty = int(value)
+        except ValueError:
+            return
+        self.cart[pid] = max(1, min(10, qty))
+        self.update_cart_count()
+        self.render_cart()
+
+    def remove(self, pid):
+        self.cart.pop(pid, None)
+        self.update_cart_count()
+        self.render_cart()
+
+    # ---------- cart window (Toplevel) ----------
+    def open_cart(self):
+        if self.cart_win and self.cart_win.winfo_exists():
+            self.cart_win.destroy()
+
+        self.cart_win = tk.Toplevel(self.root)
+        self.cart_win.title("Your Cart - shopsy.com")
+        self.cart_win.geometry("470x560")
+        self.cart_win.configure(bg=BG)
+
+        self.delivery = tk.IntVar(value=0)
+        self.gift_wrap = tk.IntVar(value=0)
+
+        self.lines_frame = tk.Frame(self.cart_win, bg=BG)
+        self.lines_frame.pack(fill="x", padx=15, pady=10)
+
+        tk.Label(self.cart_win, text="Delivery", font=("Arial", 11, "bold"), bg=BG).pack(anchor="w", padx=15)
+        tk.Radiobutton(self.cart_win, text="Standard (free above Rs. 999, else Rs. 49)",
+                       variable=self.delivery, value=0, bg=BG, command=self.render_cart).pack(anchor="w", padx=15)
+        tk.Radiobutton(self.cart_win, text=f"Express (+Rs. {EXPRESS_EXTRA})",
+                       variable=self.delivery, value=1, bg=BG, command=self.render_cart).pack(anchor="w", padx=15)
+        tk.Checkbutton(self.cart_win, text=f"Gift wrap (+Rs. {GIFT_WRAP_PRICE})", variable=self.gift_wrap,
+                       bg=BG, command=self.render_cart).pack(anchor="w", padx=15, pady=5)
+
+        self.total_label = tk.Label(self.cart_win, font=("Arial", 11), bg=BG, justify="left")
+        self.total_label.pack(anchor="w", padx=15, pady=10)
+
+        tk.Button(self.cart_win, text="Checkout", bg=PRIMARY, fg="white", font=("Arial", 11, "bold"),
+                  command=self.open_checkout).pack(pady=5)
+        self.render_cart()
+
+    def render_cart(self):
+        if not (self.cart_win and self.cart_win.winfo_exists()):
+            return
+        for widget in self.lines_frame.winfo_children():
+            widget.destroy()
+
+        lines = self.cart_lines()
+        if not lines:
+            tk.Label(self.lines_frame, text="Your cart is empty.", bg=BG).pack()
+        for product, qty in lines:
+            row = tk.Frame(self.lines_frame, bg=BG)
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=product["name"], width=18, anchor="w", bg=BG).pack(side="left")
+
+            qty_var = tk.StringVar(value=str(qty))
+            tk.Spinbox(row, from_=1, to=10, width=4, textvariable=qty_var,
+                       command=lambda pid=product["id"], v=qty_var: self.set_qty(pid, v.get())
+                       ).pack(side="left", padx=5)
+            tk.Label(row, text=f"Rs. {product['price'] * qty}", width=10, bg=BG).pack(side="left")
+            tk.Button(row, text="Remove", command=lambda pid=product["id"]: self.remove(pid)).pack(side="left")
+
+        subtotal, delivery, wrap, total = self.breakdown()
+        self.total_label.config(text=(f"Subtotal: Rs. {subtotal}\n"
+                                      f"Delivery: Rs. {delivery}\n"
+                                      f"Gift wrap: Rs. {wrap}\n"
+                                      f"Total: Rs. {total}"))
+
+    # ---------- checkout (Toplevel with Entry widgets) ----------
+    def open_checkout(self):
+        if not self.cart:
+            messagebox.showwarning("Empty cart", "Add something to your cart first.")
+            return
+
+        win = tk.Toplevel(self.cart_win)
+        win.title("Checkout")
+        win.configure(bg=BG)
+
+        fields = {}
+        for row, label in enumerate(["Full name", "Address", "Phone (10 digits)"]):
+            tk.Label(win, text=label, bg=BG).grid(row=row, column=0, sticky="w", padx=10, pady=6)
+            entry = tk.Entry(win, width=32)
+            entry.grid(row=row, column=1, padx=10)
+            fields[label] = entry
+
+        def place_order():
+            name, address, phone = [fields[key].get().strip() for key in fields]
+            if not (name and address and phone):
+                messagebox.showerror("Missing details", "Please fill in all fields.")
+                return
+            if not (phone.isdigit() and len(phone) == 10):
+                messagebox.showerror("Invalid phone", "Phone number must be exactly 10 digits.")
+                return
+            total = self.breakdown()[3]
+            messagebox.showinfo("Order placed",
+                                f"Thanks {name}!\nYour order of Rs. {total} will be delivered to:\n{address}")
+            self.cart.clear()
+            self.update_cart_count()
+            win.destroy()
+            self.cart_win.destroy()
+            self.status.config(text="Order placed. Thanks for shopping at shopsy.com!")
+
+        tk.Button(win, text="Place order", bg=PRIMARY, fg="white", font=("Arial", 11, "bold"),
+                  command=place_order).grid(row=3, column=0, columnspan=2, pady=12)
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    Shopsy(root)
+    root.mainloop()
